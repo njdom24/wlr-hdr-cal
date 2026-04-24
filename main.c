@@ -1,4 +1,5 @@
 #include <wayland-client.h>
+#include "wlr-gamma-control-unstable-v1-client-protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +8,7 @@ struct output_info {
     struct wl_output *output;
     int32_t x, y, width, height;
     int32_t refresh;
-    char make[256], model[256], con_name[256]; // TODO: Null-init con_name, since it requires v4
+    char make[256], model[256], con_name[256];
 };
 
 static struct output_info outputs[16]; // Assume limited output count
