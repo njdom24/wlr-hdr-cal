@@ -9,14 +9,37 @@ struct output_info {
     int32_t x, y, width, height;
     int32_t refresh;
     char make[256], model[256], con_name[256];
+    struct zwlr_gamma_control_v1 *gamma_control;
+    uint32_t gamma_size;
 };
 
-static struct output_info outputs[16]; // Assume limited output count
+static struct output_info outputs[16];
 static int output_count = 0;
+static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 
-static void output_name(void *data, struct wl_output *wl_output,
-    const char *name)
-{
+// --- Gamma Control ---
+
+static void gamma_control_gamma_size(void *data, struct zwlr_gamma_control_v1 *control, uint32_t size) {
+    struct output_info *info = data;
+    info->gamma_size = size;
+    printf("  %s: gamma ramp size = %u\n", info->con_name, size);
+}
+
+static void gamma_control_failed(void *data, struct zwlr_gamma_control_v1 *control) {
+    struct output_info *info = data;
+    fprintf(stderr, "  %s: gamma control failed\n", info->con_name);
+    zwlr_gamma_control_v1_destroy(control);
+    info->gamma_control = NULL;
+}
+
+static const struct zwlr_gamma_control_v1_listener gamma_control_listener = {
+    .gamma_size = gamma_control_gamma_size,
+    .failed     = gamma_control_failed,
+};
+
+// --- Output ---
+
+static void output_name(void *data, struct wl_output *wl_output, const char *name) {
     struct output_info *info = data;
     strncpy(info->con_name, name, 255);
 }
@@ -68,6 +91,9 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
         
         wl_output_add_listener(info->output, &output_listener, info);
     }
+    else if (strcmp(interface, zwlr_gamma_control_manager_v1_interface.name) == 0) {
+        gamma_manager = wl_registry_bind(registry, name, &zwlr_gamma_control_manager_v1_interface, 1);
+    }
 }
 
 static void registry_global_remove(void *data, struct wl_registry *registry, uint32_t name) {}
@@ -87,7 +113,7 @@ int main(void) {
     // Listen to events emitted by the registry
     struct wl_registry_listener registry_listener = {
         .global        = registry_global,
-        .global_remove = registry_global_remove
+        .global_remove = registry_global_remove,
     };
     wl_registry_add_listener(registry, &registry_listener, NULL); // void *data unused
 
@@ -102,6 +128,24 @@ int main(void) {
                o->width, o->height, o->x, o->y,
                o->refresh / 1000.0);
     }
+    printf("------------------------------------------------------------------------------\n");
+
+    if (!gamma_manager) {
+        fprintf(stderr, "Compositor does not support zwlr_gamma_control_manager_v1\n");
+        wl_display_disconnect(display);
+        return 1;
+    }
+
+    // Get gamma control for each output and listen for gamma_size
+    for (int i = 0; i < output_count; i++) {
+        struct output_info *o = &outputs[i];
+        o->gamma_control = zwlr_gamma_control_manager_v1_get_gamma_control(gamma_manager, o->output);
+        zwlr_gamma_control_v1_add_listener(o->gamma_control, &gamma_control_listener, o);
+    }
+
+    wl_display_roundtrip(display); // Collect gamma_size events
+
+    // TODO: set_gamma
 
     wl_display_disconnect(display);
     return 0;
