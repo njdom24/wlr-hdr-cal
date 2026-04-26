@@ -146,6 +146,9 @@ int main(void) {
     wl_display_roundtrip(display); // Collect gamma_size events
 
     // TODO: set_gamma
+    while (wl_display_dispatch(display) != -1) {
+        // keeps processing events until the connection drops or Ctrl+C
+    }
 
     wl_display_disconnect(display);
     return 0;
