@@ -1,8 +1,15 @@
+#define _GNU_SOURCE
+
 #include <wayland-client.h>
 #include "wlr-gamma-control-unstable-v1-client-protocol.h"
+#include <math.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <linux/memfd.h>
 
 struct output_info {
     struct wl_output *output;
@@ -145,7 +152,33 @@ int main(void) {
 
     wl_display_roundtrip(display); // Collect gamma_size events
 
-    // TODO: set_gamma
+    /*
+      Protocol defines the gamma ramp as an FD of size (gamma_size * 3 channels)
+      in order of Red, Green, Blue
+    */
+    for (int i = 0; i < output_count; i++) {
+        struct output_info *o = &outputs[i];
+        size_t size = sizeof(uint16_t) * o->gamma_size * 3;
+        int fd = memfd_create("gamma-ramp", 0);
+
+        printf("gamma_size=%u, fd size=%zu\n", o->gamma_size, size);
+        ftruncate(fd, size);
+        uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+        // Interpolate from 0..1 (0..UINT16_MAX)
+        for (uint32_t j = 0; j < o->gamma_size; j++) {
+            uint16_t v = (uint16_t)(j * UINT16_MAX / (o->gamma_size - 1));
+            ramp[j]                  = v;  // red
+            ramp[o->gamma_size + j]  = v;  // green
+            ramp[o->gamma_size * 2 + j] = v;  // blue
+        }
+        ramp[o->gamma_size * 3 - 1] = UINT16_MAX;
+
+        munmap(ramp, size);
+
+        zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
+    }
+
     while (wl_display_dispatch(display) != -1) {
         // keeps processing events until the connection drops or Ctrl+C
     }
