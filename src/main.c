@@ -24,6 +24,25 @@ static struct output_info outputs[16];
 static int output_count = 0;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 
+// Assuming display is in ST2084 PQ for now
+//   TODO: Use color_management_v1 to know this
+
+// --- HDR10 PQ Mapping ---
+// Reference: https://www.itu.int/rec/R-REC-BT.2100/en
+#define PQ_MAX 10000.0
+#define M1 (2610.0 / 16384)
+#define M2 ((2523.0 / 4096) * 128)
+#define C2 ((2413.0 / 4096) * 32)
+#define C3 ((2392.0 / 4096) * 32)
+#define C1 (C3 - C2 + 1)
+
+// OETF (Inverse EOTF): nits -> PQ signal [0..1]
+static double nits_to_pq(double nits) {
+    double normalized = nits / PQ_MAX;
+    double powered = pow(normalized, M1);
+    return pow((C1 + C2 * powered) / (1.0 + C3 * powered), M2);
+}
+
 // --- Gamma Control ---
 
 static void gamma_control_gamma_size(void *data, struct zwlr_gamma_control_v1 *control, uint32_t size) {
