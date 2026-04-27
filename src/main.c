@@ -171,11 +171,17 @@ int main(void) {
 
     wl_display_roundtrip(display); // Collect gamma_size events
 
+    // Idea: Say gamma ramp size is 4096. From an input nits value, we want to figure out where it belongs in the gamma ramp. For example, 0.5 in PQ should be at index 2048 in the ramp.
+    //   We can do this for each input nits value and output nits value, and then interpolate the gamma ramp values in between. This way we can create a custom PQ curve that maps input nits to output nits.
     /*
       Protocol defines the gamma ramp as an FD of size (gamma_size * 3 channels)
       in order of Red, Green, Blue
     */
     for (int i = 0; i < output_count; i++) {
+        double input_nits[] = {0, 100, 500, 1000, 2000, 4000, 10000};
+        double output_nits[] = {0, 50, 250, 500, 1000, 2000, 5000};
+        //double output_nits[] = {0, 200, 1000, 2000, 4000, 8000, 10000};
+
         struct output_info *o = &outputs[i];
         size_t size = sizeof(uint16_t) * o->gamma_size * 3;
         int fd = memfd_create("gamma-ramp", 0);
@@ -184,14 +190,43 @@ int main(void) {
         ftruncate(fd, size);
         uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-        // Interpolate from 0..1 (0..UINT16_MAX)
-        for (uint32_t j = 0; j < o->gamma_size; j++) {
-            uint16_t v = (uint16_t)(j * UINT16_MAX / (o->gamma_size - 1));
-            ramp[j]                  = v;  // red
-            ramp[o->gamma_size + j]  = v;  // green
-            ramp[o->gamma_size * 2 + j] = v;  // blue
+        for(int j = 0; j < sizeof(input_nits) / sizeof(double); j++) {
+            double input_pq = nits_to_pq(input_nits[j]);
+            double output_pq = nits_to_pq(output_nits[j]);
+            double multiplier = output_pq / input_pq;
+            printf("  %d nits -> %d nits:\t %.4f PQ -> %.4f PQ\tRamp Index: %u\tRamp Multiplier: %.4f\tRamp Value: %u\n",
+                   input_nits[j], output_nits[j], input_pq, output_pq, (uint32_t)(input_pq * o->gamma_size), multiplier, (uint16_t)(output_pq * multiplier * UINT16_MAX));
         }
-        ramp[o->gamma_size * 3 - 1] = UINT16_MAX;
+
+        // Convert to PQ vals 0..1
+        // TODO: Output these into input_pq and output_pq double arrays for clarity
+        for(int j = 0; j < sizeof(input_nits) / sizeof(double); j++) {
+            input_nits[j] = nits_to_pq(input_nits[j]);
+            output_nits[j] = nits_to_pq(output_nits[j]);
+        }
+
+        // Interpolate between two points
+        for(int j = 0; j < sizeof(input_nits) / sizeof(double) - 1; j++) {
+            double i1 = input_nits[j];
+            double i2 = input_nits[j+1];
+            double o1 = output_nits[j];
+            double o2 = output_nits[j+1];
+
+            for(int ramp_idx = (int)(i1 * o->gamma_size); ramp_idx < (int)(i2 * o->gamma_size); ramp_idx++) {
+                double delta = (ramp_idx - (i1 * o->gamma_size));
+                double segment_length = ((i2 - i1) * o->gamma_size);
+                double t = delta / segment_length;
+                double out_pq = o1 + t * (o2 - o1);
+
+                uint16_t v = (uint16_t)(out_pq * UINT16_MAX);
+                ramp[ramp_idx]                      = v;
+                ramp[o->gamma_size + ramp_idx]      = v;
+                ramp[o->gamma_size * 2 + ramp_idx]  = v;
+            }
+        }
+        ramp[o->gamma_size - 1]         = UINT16_MAX;  // red
+        ramp[o->gamma_size * 2 - 1]     = UINT16_MAX;  // green
+        ramp[o->gamma_size * 3 - 1]     = UINT16_MAX;  // blue
 
         munmap(ramp, size);
 
