@@ -8,5 +8,6 @@ pkgs.mkShell {
     gcc
     meson
     ninja
+    tomlc17
   ];
 }
