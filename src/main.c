@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <linux/memfd.h>
+#include "config.h"
 
 struct output_info {
     struct wl_output *output;
@@ -171,6 +172,14 @@ int main(void) {
 
     wl_display_roundtrip(display); // Collect gamma_size events
 
+    // Read from config
+    output_config *cfg = NULL;
+    int config_sz = config_read(&cfg);
+    if(config_sz < 0) {
+        fprintf(stderr, "Failed to read from config file.\n");
+        return 1;
+    }
+
     // Idea: Say gamma ramp size is 4096. From an input nits value, we want to figure out where it belongs in the gamma ramp. For example, 0.5 in PQ should be at index 2048 in the ramp.
     //   We can do this for each input nits value and output nits value, and then interpolate the gamma ramp values in between. This way we can create a custom PQ curve that maps input nits to output nits.
     /*
@@ -178,19 +187,39 @@ int main(void) {
       in order of Red, Green, Blue
     */
     for (int i = 0; i < output_count; i++) {
-        double input_nits[] = {0, 100, 500, 1000, 2000, 4000, 10000};
-        double output_nits[] = {0, 50, 250, 500, 1000, 2000, 5000};
-        //double output_nits[] = {0, 200, 1000, 2000, 4000, 8000, 10000};
+        size_t lut_len = -1;
+        double *input_nits = NULL;
+        double *output_nits = NULL;
 
         struct output_info *o = &outputs[i];
+        if(o->gamma_control == NULL) {
+            fprintf(stderr, "Cannot acquire gamma control for %s.\n", o->con_name);
+            continue;
+        }
+
+        // Hash table might be better, but the list size should be small enough
+        for(int j = 0; j < config_sz; j++) {
+            if(strcmp(cfg[j].name, o->con_name) == 0) {
+                lut_len = cfg[j].lut_len;
+                input_nits = cfg[j].input_nits;
+                output_nits = cfg[j].output_nits;
+                break;
+            }
+        }
+
+        if(lut_len <= 0) {
+            fprintf(stderr, "Output %s not configured.\n", o->con_name);
+            continue;
+        }
+
         size_t size = sizeof(uint16_t) * o->gamma_size * 3;
         int fd = memfd_create("gamma-ramp", 0);
 
-        printf("gamma_size=%u, fd size=%zu\n", o->gamma_size, size);
+        printf("%s: gamma_size=%u, fd size=%zu\n", o->con_name, o->gamma_size, size);
         ftruncate(fd, size);
         uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-        for(int j = 0; j < sizeof(input_nits) / sizeof(double); j++) {
+        for(int j = 0; j < lut_len; j++) {
             double input_pq = nits_to_pq(input_nits[j]);
             double output_pq = nits_to_pq(output_nits[j]);
             double multiplier = output_pq / input_pq;
@@ -200,13 +229,13 @@ int main(void) {
 
         // Convert to PQ vals 0..1
         // TODO: Output these into input_pq and output_pq double arrays for clarity
-        for(int j = 0; j < sizeof(input_nits) / sizeof(double); j++) {
+        for(int j = 0; j < lut_len; j++) {
             input_nits[j] = nits_to_pq(input_nits[j]);
             output_nits[j] = nits_to_pq(output_nits[j]);
         }
 
         // Interpolate between two points
-        for(int j = 0; j < sizeof(input_nits) / sizeof(double) - 1; j++) {
+        for(int j = 0; j < lut_len - 1; j++) {
             double i1 = input_nits[j];
             double i2 = input_nits[j+1];
             double o1 = output_nits[j];
@@ -232,6 +261,8 @@ int main(void) {
 
         zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
     }
+
+    config_free(cfg);
 
     while (wl_display_dispatch(display) != -1) {
         // keeps processing events until the connection drops or Ctrl+C
