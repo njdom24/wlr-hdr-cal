@@ -1,3 +1,6 @@
 [submodule "wlr-protocols"]
 	path = vendor/wlr-protocols
 	url = https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
+[submodule "vendor/tomlc17"]
+	path = vendor/tomlc17
+	url = https://github.com/cktan/tomlc17.git
