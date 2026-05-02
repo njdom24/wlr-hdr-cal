@@ -20,7 +20,14 @@ if not toml_dep.found()
   )
 endif
 
-gamma_xml = files('vendor/wlr-protocols/unstable/wlr-gamma-control-unstable-v1.xml')
+wlr_dep = dependency('wlr-protocols', required: false)
+if wlr_dep.found()
+  wlr_dir = wlr_dep.get_variable('pkgdatadir') / 'unstable/'
+else
+  wlr_dir = 'vendor/wlr-protocols/unstable/'
+endif
+
+gamma_xml = files(wlr_dir / 'wlr-gamma-control-unstable-v1.xml')
 gamma = wl_mod.scan_xml(gamma_xml)
 
 executable('main', src, gamma, dependencies: [wl_dep, toml_dep, meson.get_compiler('c').find_library('m')])
