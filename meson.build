@@ -30,4 +30,9 @@ endif
 gamma_xml = files(wlr_dir / 'wlr-gamma-control-unstable-v1.xml')
 gamma = wl_mod.scan_xml(gamma_xml)
 
-executable('main', src, gamma, dependencies: [wl_dep, toml_dep, meson.get_compiler('c').find_library('m')])
+wp_dep = dependency('wayland-protocols')
+wp_dir = wp_dep.get_variable('pkgdatadir')
+color_management_xml = files(wp_dir / 'staging/color-management/color-management-v1.xml')
+color_management = wl_mod.scan_xml(color_management_xml)
+
+executable('main', src, gamma, color_management, dependencies: [wl_dep, toml_dep, meson.get_compiler('c').find_library('m')])
