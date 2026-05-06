@@ -11,18 +11,21 @@
 #include <unistd.h>
 #include <linux/memfd.h>
 #include "config.h"
+#include "outputs.h"
+#include "wlr-output-management-unstable-v1-client-protocol.h"
 
 struct output_info {
     struct wl_output *output;
     int32_t x, y, width, height;
     int32_t refresh;
-    char make[256], model[256], con_name[256];
+    char con_name[256];
     struct zwlr_gamma_control_v1 *gamma_control;
     uint32_t gamma_size;
 };
 
 static struct output_info outputs[16];
 static int output_count = 0;
+static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 
 // Assuming display is in ST2084 PQ for now
@@ -80,8 +83,6 @@ static void output_geometry(void *data, struct wl_output *wl_output,
 {
     struct output_info *info = data;
     info->x = x; info->y = y;
-    strncpy(info->make, make, 255);
-    strncpy(info->model, model, 255);
 }
 
 static void output_mode(void *data, struct wl_output *wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
@@ -118,6 +119,10 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
         
         wl_output_add_listener(info->output, &output_listener, info);
     }
+    else if (strcmp(interface, zwlr_output_manager_v1_interface.name) == 0) {
+        output_manager = wl_registry_bind(registry, name, &zwlr_output_manager_v1_interface, 4);
+        zwlr_output_manager_v1_add_listener(output_manager, &manager_listener, NULL);
+    }
     else if (strcmp(interface, zwlr_gamma_control_manager_v1_interface.name) == 0) {
         gamma_manager = wl_registry_bind(registry, name, &zwlr_gamma_control_manager_v1_interface, 1);
     }
@@ -150,8 +155,9 @@ int main(void) {
     printf("Found %d display(s):\n", output_count);
     for (int i = 0; i < output_count; i++) {
         struct output_info *o = &outputs[i];
+        head_state *hs = get_head_state(o->con_name);
         printf("  Display %d (%s): %s %s @ %dx%d+%d+%d, %.2f Hz\n",
-               i, o->con_name, o->make, o->model,
+               i, o->con_name, hs->make, hs->model,
                o->width, o->height, o->x, o->y,
                o->refresh / 1000.0);
     }
@@ -159,6 +165,12 @@ int main(void) {
 
     if (!gamma_manager) {
         fprintf(stderr, "Compositor does not support zwlr_gamma_control_manager_v1\n");
+        wl_display_disconnect(display);
+        return 1;
+    }
+
+    if (!output_manager) {
+        fprintf(stderr, "Compositor does not support zwlr_output_manager_v1\n");
         wl_display_disconnect(display);
         return 1;
     }
