@@ -12,7 +12,9 @@
 #include <linux/memfd.h>
 #include "config.h"
 #include "outputs.h"
+#include "cm.h"
 #include "wlr-output-management-unstable-v1-client-protocol.h"
+#include "color-management-v1-client-protocol.h"
 
 struct output_info {
     struct wl_output *output;
@@ -21,12 +23,15 @@ struct output_info {
     char con_name[256];
     struct zwlr_gamma_control_v1 *gamma_control;
     uint32_t gamma_size;
+
+    cm_state cm;
 };
 
 static struct output_info outputs[16];
 static int output_count = 0;
 static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
+static struct wp_color_manager_v1 *color_manager = NULL;
 
 // Assuming display is in ST2084 PQ for now
 //   TODO: Use color_management_v1 to know this
@@ -123,6 +128,10 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
         output_manager = wl_registry_bind(registry, name, &zwlr_output_manager_v1_interface, 4);
         zwlr_output_manager_v1_add_listener(output_manager, &manager_listener, NULL);
     }
+    else if (strcmp(interface, wp_color_manager_v1_interface.name) == 0) {
+        color_manager = wl_registry_bind(registry, name, &wp_color_manager_v1_interface, 1); // version 1 is fine since we only care about PQ EOTF or not
+        wp_color_manager_v1_add_listener(color_manager, &color_manager_listener, NULL);
+    }
     else if (strcmp(interface, zwlr_gamma_control_manager_v1_interface.name) == 0) {
         gamma_manager = wl_registry_bind(registry, name, &zwlr_gamma_control_manager_v1_interface, 1);
     }
@@ -149,7 +158,7 @@ int main(void) {
     };
     wl_registry_add_listener(registry, &registry_listener, NULL); // void *data unused
 
-    wl_display_dispatch(display);   // collect globals
+    wl_display_roundtrip(display);   // collect globals
     wl_display_roundtrip(display);  // collect output events (may call global_remove when the server destroys globals)
 
     printf("Found %d display(s):\n", output_count);
@@ -163,14 +172,20 @@ int main(void) {
     }
     printf("------------------------------------------------------------------------------\n");
 
-    if (!gamma_manager) {
-        fprintf(stderr, "Compositor does not support zwlr_gamma_control_manager_v1\n");
+    if (!output_manager) {
+        fprintf(stderr, "Compositor does not support zwlr_output_manager_v1\n");
         wl_display_disconnect(display);
         return 1;
     }
 
-    if (!output_manager) {
-        fprintf(stderr, "Compositor does not support zwlr_output_manager_v1\n");
+    if (!color_manager) {
+        fprintf(stderr, "Compositor does not support wp_color_management_v1\n");
+        wl_display_disconnect(display);
+        return 1;
+    }
+
+    if (!gamma_manager) {
+        fprintf(stderr, "Compositor does not support zwlr_gamma_control_manager_v1\n");
         wl_display_disconnect(display);
         return 1;
     }
@@ -208,6 +223,15 @@ int main(void) {
             fprintf(stderr, "Cannot acquire gamma control for %s.\n", o->con_name);
             continue;
         }
+
+        o->cm.output = o->output;
+        o->cm.output_name = o->con_name;
+
+        fprintf(stderr, "output=%p\n", (void*)o);
+        cm_init_output(color_manager, &o->cm);
+        fprintf(stderr, "%s cm_output=%p\n", o->con_name, (void*)o->cm.cm_output);
+        wl_display_roundtrip(display);
+        wl_display_roundtrip(display);
 
         // Hash table might be better, but the list size should be small enough
         for(int j = 0; j < config_sz; j++) {

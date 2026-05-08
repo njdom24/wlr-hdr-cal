@@ -4,6 +4,7 @@ src = files(
   'src/main.c',
   'src/config.c',
   'src/outputs.c',
+  'src/cm.c',
 )
 
 wl_dep = dependency('wayland-client')
