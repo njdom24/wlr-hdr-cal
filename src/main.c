@@ -14,7 +14,6 @@ static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 static struct wp_color_manager_v1 *color_manager = NULL;
 
-
 // --- Gamma Control ---
 
 static void gamma_control_gamma_size(void *data, struct zwlr_gamma_control_v1 *control, uint32_t size) {

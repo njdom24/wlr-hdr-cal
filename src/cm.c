@@ -38,7 +38,6 @@ void apply_gamma_ramp(output_info *o) {
     double *input_nits = NULL;
     double *output_nits = NULL;
 
-    //struct output_info *o = &outputs[i];
     if(o->gamma_control == NULL) {
         fprintf(stderr, "Cannot acquire gamma control for %s.\n", o->con_name);
         return;
@@ -236,7 +235,6 @@ static void fetch_image_description(output_info *o) {
 
 // Refresh TF metadata on change
 static void cm_output_image_description_changed(void *data, struct wp_color_management_output_v1 *cm_output) {
-    fprintf(stderr, "output image description changed (HDR/SDR switch?)\n");
     output_info *o = data;
     fetch_image_description(o);
 }
