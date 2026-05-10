@@ -113,6 +113,31 @@ void apply_gamma_ramp(output_info *o) {
     zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
 }
 
+void unset_gamma_ramp(output_info *o) {
+    if(o->gamma_control == NULL) {
+        fprintf(stderr, "failed to acquire gamma control for %s.\n", o->con_name);
+        return;
+    }
+
+    size_t size = sizeof(uint16_t) * o->gamma_size * 3;
+    int fd = memfd_create("gamma-ramp", 0);
+    if (ftruncate(fd, size) == -1) {
+        fprintf(stderr, "failed to create gamma ramp for %s\n", o->con_name);
+        return;
+    }
+    uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    for(int i = 0; i < o->gamma_size; i++) {
+        uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
+        ramp[i]                     = v;  // red
+        ramp[o->gamma_size + i]     = v;  // green
+        ramp[o->gamma_size * 2 + i] = v;  // blue
+    }
+
+    munmap(ramp, size);
+    zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
+}
+
 // Image listeners
 // Used to determine active TF
 
@@ -129,6 +154,12 @@ static void info_tf_power(void *data, struct wp_image_description_info_v1 *info,
 static void info_done(void *data, struct wp_image_description_info_v1 *info) {
     output_info *o = data;
     fprintf(stderr, "info done, %s is_hdr=%d\n", o->con_name, o->is_hdr);
+
+    if(o->is_hdr) {
+        apply_gamma_ramp(o);
+    } else {
+        unset_gamma_ramp(o);
+    }
 }
 
 static void info_icc_file(void *data, struct wp_image_description_info_v1 *info, int32_t icc, uint32_t icc_size) { }
@@ -249,5 +280,4 @@ void cm_init_output(struct wp_color_manager_v1 *color_manager, output_info *o) {
     wp_color_management_output_v1_add_listener(o->cm_output, &cm_output_listener, o);
     fetch_image_description(o);
     fprintf(stderr, "created listener for output %s\n", o->con_name);
-    apply_gamma_ramp(o);
 }
