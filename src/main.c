@@ -20,11 +20,15 @@ static void gamma_control_gamma_size(void *data, struct zwlr_gamma_control_v1 *c
     output_info *info = data;
     info->gamma_size = size;
     printf("  %s: gamma ramp size = %u\n", info->con_name, size);
+
+    if (!info->cm_output && color_manager) {
+        cm_init_output(color_manager, info);
+    }
 }
 
 static void gamma_control_failed(void *data, struct zwlr_gamma_control_v1 *control) {
     output_info *info = data;
-    fprintf(stderr, "  %s: gamma control failed\n", info->con_name);
+    fprintf(stderr, "  %s: gamma control failed (already running?)\n", info->con_name);
     zwlr_gamma_control_v1_destroy(control);
     info->gamma_control = NULL;
 }
@@ -46,7 +50,14 @@ static void output_geometry(void *data, struct wl_output *wl_output,
     int32_t x, int32_t y, int32_t w, int32_t h,
     int32_t subpixel, const char *make, const char *model, int32_t transform) { }
 static void output_mode(void *data, struct wl_output *wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) { }
-static void output_done(void *data, struct wl_output *wl_output) { }
+static void output_done(void *data, struct wl_output *wl_output) {
+    output_info *info = data;
+
+    if (!info->gamma_control && gamma_manager) {
+        info->gamma_control = zwlr_gamma_control_manager_v1_get_gamma_control(gamma_manager, info->output);
+        zwlr_gamma_control_v1_add_listener(info->gamma_control, &gamma_control_listener, info);
+    }
+}
 static void output_scale(void *data, struct wl_output *wl_output, int32_t factor) { }
 
 static const struct wl_output_listener output_listener = {
@@ -56,7 +67,26 @@ static const struct wl_output_listener output_listener = {
 // Hook up to display events
 static void registry_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     if (strcmp(interface, wl_output_interface.name) == 0) {
-        output_info *info = &outputs[output_count++];
+        output_info *info = NULL;
+        for (int i = 0; i < output_count; i++) {
+            // Try to reuse struct from deactivated outputs
+            if (!outputs[i].active) {
+                info = &outputs[i];
+                break;
+            }
+        }
+        if (!info) {
+            if (output_count >= 16) {
+                fprintf(stderr, "Max output count reached\n");
+                return;
+            }
+            info = &outputs[output_count++];
+        }
+
+        memset(info, 0, sizeof(output_info));
+        info->active = 1;
+        info->global_name = name;
+
         if (version < 2) {
             fprintf(stderr, "Requires %s protocol version 2. Provided %d.\n", interface, version);
             return;
@@ -84,10 +114,36 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
     }
 }
 
-static void registry_global_remove(void *data, struct wl_registry *registry, uint32_t name) {}
+// Tear down on output loss
+static void registry_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
+    for (int i = 0; i < output_count; i++) {
+        if (outputs[i].active && outputs[i].global_name == name) {
+            output_info *info = &outputs[i];
+            if (info->gamma_control) zwlr_gamma_control_v1_destroy(info->gamma_control);
+            if (info->cm_output) wp_color_management_output_v1_destroy(info->cm_output);
+            if (info->image_desc) wp_image_description_v1_destroy(info->image_desc);
+            if (info->output) {
+                if (wl_proxy_get_version((struct wl_proxy *)info->output) >= 3) {
+                    wl_output_release(info->output);
+                } else {
+                    wl_output_destroy(info->output);
+                }
+            }
+            info->active = 0;
+            break;
+        }
+    }
+}
 
 // Intro to Wayland from https://drewdevault.com/blog/Introduction-to-Wayland/
 int main(void) {
+    // Read from config file
+    config_sz = config_read(&cfg);
+    if(config_sz < 0) {
+        fprintf(stderr, "Failed to read from config file.\n");
+        return 1;
+    }
+
     // Establish a connection to the Wayland server
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) {
@@ -111,9 +167,10 @@ int main(void) {
     printf("Found %d display(s):\n", output_count);
     for (int i = 0; i < output_count; i++) {
         output_info *o = &outputs[i];
+        if (!o->active) continue;
         head_state *hs = get_head_state(o->con_name);
         printf("  Display %d (%s): %s %s\n",
-               i, o->con_name, hs->make, hs->model);
+               i, o->con_name, hs ? hs->make : "unknown", hs ? hs->model : "unknown");
     }
     printf("------------------------------------------------------------------------------\n");
 
@@ -133,32 +190,6 @@ int main(void) {
         fprintf(stderr, "Compositor does not support zwlr_gamma_control_manager_v1\n");
         wl_display_disconnect(display);
         return 1;
-    }
-
-    // Get gamma control for each output and listen for gamma_size
-    for (int i = 0; i < output_count; i++) {
-        output_info *o = &outputs[i];
-        o->gamma_control = zwlr_gamma_control_manager_v1_get_gamma_control(gamma_manager, o->output);
-        zwlr_gamma_control_v1_add_listener(o->gamma_control, &gamma_control_listener, o);
-    }
-
-    wl_display_roundtrip(display); // Collect gamma_size events
-
-    // Read from config
-    config_sz = config_read(&cfg);
-    if(config_sz < 0) {
-        fprintf(stderr, "Failed to read from config file.\n");
-        return 1;
-    }
-
-    // Init CM for each output
-    // TODO: Dynamically init when an output is enabled
-    for (int i = 0; i < output_count; i++) {
-        output_info *o = &outputs[i];
-
-        cm_init_output(color_manager, o);
-        wl_display_roundtrip(display);
-        wl_display_roundtrip(display);
     }
 
     while (wl_display_dispatch(display) != -1) {

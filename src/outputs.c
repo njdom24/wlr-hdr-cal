@@ -42,6 +42,9 @@ static void head_adaptive_sync(void *data, struct zwlr_output_head_v1 *head, uin
 static void head_finished(void *data, struct zwlr_output_head_v1 *head) {
     head_state *hs = data;
     printf("[-] Output disconnected: %s\n", hs->name ? hs->name : "(unknown)");
+    if (hs->index >= 0 && hs->index < 16) {
+        heads[hs->index] = NULL;
+    }
     free(hs->name);
     free(hs->make);
     free(hs->model);
@@ -70,8 +73,23 @@ static const struct zwlr_output_head_v1_listener head_listener = {
 
 static void manager_head(void *data, struct zwlr_output_manager_v1 *mgr, struct zwlr_output_head_v1 *head) {
     head_state *hs = calloc(1, sizeof(*hs));
-    hs->index = head_count;
-    heads[head_count++] = hs;
+    hs->index = -1;
+    for (int i = 0; i < head_count; i++) {
+        if (heads[i] == NULL) {
+            hs->index = i;
+            heads[i] = hs;
+            break;
+        }
+    }
+    if (hs->index == -1) {
+        if (head_count >= 16) {
+            fprintf(stderr, "Max head count reached\n");
+            free(hs);
+            return;
+        }
+        hs->index = head_count;
+        heads[head_count++] = hs;
+    }
     zwlr_output_head_v1_add_listener(head, &head_listener, hs);
 }
 
@@ -95,7 +113,7 @@ const struct zwlr_output_manager_v1_listener manager_listener = {
 head_state* get_head_state(char *name) {
     for(int i = 0; i < head_count; i++) {
         head_state *hs = heads[i];
-        if(strcmp(name, hs->name) == 0) {
+        if(hs && hs->name && strcmp(name, hs->name) == 0) {
             return hs;
         }
     }

@@ -5,6 +5,8 @@
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 
 typedef struct {
+    int active;
+    uint32_t global_name;
     struct wl_output *output;
     char con_name[256];
     struct zwlr_gamma_control_v1 *gamma_control;
