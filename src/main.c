@@ -16,16 +16,16 @@
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 #include "color-management-v1-client-protocol.h"
 
-struct output_info {
+typedef struct {
     struct wl_output *output;
     char con_name[256];
     struct zwlr_gamma_control_v1 *gamma_control;
     uint32_t gamma_size;
 
     cm_state cm;
-};
+} output_info;
 
-static struct output_info outputs[16];
+static output_info outputs[16];
 static int output_count = 0;
 static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
@@ -53,13 +53,13 @@ static double nits_to_pq(double nits) {
 // --- Gamma Control ---
 
 static void gamma_control_gamma_size(void *data, struct zwlr_gamma_control_v1 *control, uint32_t size) {
-    struct output_info *info = data;
+    output_info *info = data;
     info->gamma_size = size;
     printf("  %s: gamma ramp size = %u\n", info->con_name, size);
 }
 
 static void gamma_control_failed(void *data, struct zwlr_gamma_control_v1 *control) {
-    struct output_info *info = data;
+    output_info *info = data;
     fprintf(stderr, "  %s: gamma control failed\n", info->con_name);
     zwlr_gamma_control_v1_destroy(control);
     info->gamma_control = NULL;
@@ -73,7 +73,7 @@ static const struct zwlr_gamma_control_v1_listener gamma_control_listener = {
 // --- Output ---
 
 static void output_name(void *data, struct wl_output *wl_output, const char *name) {
-    struct output_info *info = data;
+    output_info *info = data;
     strncpy(info->con_name, name, 255);
 }
 
@@ -92,7 +92,7 @@ static const struct wl_output_listener output_listener = {
 // Hook up to display events
 static void registry_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     if (strcmp(interface, wl_output_interface.name) == 0) {
-        struct output_info *info = &outputs[output_count++];
+        output_info *info = &outputs[output_count++];
         if (version < 2) {
             fprintf(stderr, "Requires %s protocol version 2. Provided %d.\n", interface, version);
             return;
@@ -146,7 +146,7 @@ int main(void) {
 
     printf("Found %d display(s):\n", output_count);
     for (int i = 0; i < output_count; i++) {
-        struct output_info *o = &outputs[i];
+        output_info *o = &outputs[i];
         head_state *hs = get_head_state(o->con_name);
         printf("  Display %d (%s): %s %s\n",
                i, o->con_name, hs->make, hs->model);
@@ -173,7 +173,7 @@ int main(void) {
 
     // Get gamma control for each output and listen for gamma_size
     for (int i = 0; i < output_count; i++) {
-        struct output_info *o = &outputs[i];
+        output_info *o = &outputs[i];
         o->gamma_control = zwlr_gamma_control_manager_v1_get_gamma_control(gamma_manager, o->output);
         zwlr_gamma_control_v1_add_listener(o->gamma_control, &gamma_control_listener, o);
     }
@@ -199,7 +199,7 @@ int main(void) {
         double *input_nits = NULL;
         double *output_nits = NULL;
 
-        struct output_info *o = &outputs[i];
+        output_info *o = &outputs[i];
         if(o->gamma_control == NULL) {
             fprintf(stderr, "Cannot acquire gamma control for %s.\n", o->con_name);
             continue;
