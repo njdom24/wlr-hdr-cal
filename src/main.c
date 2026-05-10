@@ -264,18 +264,19 @@ int main(void) {
         }
 
         // Convert to PQ vals 0..1
-        // TODO: Output these into input_pq and output_pq double arrays for clarity
+        double input_pq[lut_len]; // VLA size should be small
+        double output_pq[lut_len];
         for(int j = 0; j < lut_len; j++) {
-            input_nits[j] = nits_to_pq(input_nits[j]);
-            output_nits[j] = nits_to_pq(output_nits[j]);
+            input_pq[j] = nits_to_pq(input_nits[j]);
+            output_pq[j] = nits_to_pq(output_nits[j]);
         }
 
         // Interpolate between two points
         for(int j = 0; j < lut_len - 1; j++) {
-            double i1 = input_nits[j];
-            double i2 = input_nits[j+1];
-            double o1 = output_nits[j];
-            double o2 = output_nits[j+1];
+            double i1 = input_pq[j];
+            double i2 = input_pq[j+1];
+            double o1 = output_pq[j];
+            double o2 = output_pq[j+1];
 
             for(int ramp_idx = (int)(i1 * o->gamma_size); ramp_idx < (int)(i2 * o->gamma_size); ramp_idx++) {
                 double delta = (ramp_idx - (i1 * o->gamma_size));
