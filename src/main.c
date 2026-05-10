@@ -221,7 +221,10 @@ int main(void) {
         int fd = memfd_create("gamma-ramp", 0);
 
         printf("%s: gamma_size=%u, fd size=%zu\n", o->con_name, o->gamma_size, size);
-        ftruncate(fd, size);
+        if (ftruncate(fd, size) == -1) {
+            fprintf(stderr, "failed to create gamma ramp for %s\n", o->con_name);
+            continue;
+        }
         uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
         for(int j = 0; j < lut_len; j++) {
