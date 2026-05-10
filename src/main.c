@@ -16,15 +16,6 @@
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 #include "color-management-v1-client-protocol.h"
 
-typedef struct {
-    struct wl_output *output;
-    char con_name[256];
-    struct zwlr_gamma_control_v1 *gamma_control;
-    uint32_t gamma_size;
-
-    cm_state cm;
-} output_info;
-
 static output_info outputs[16];
 static int output_count = 0;
 static struct zwlr_output_manager_v1 *output_manager = NULL;
@@ -205,12 +196,9 @@ int main(void) {
             continue;
         }
 
-        o->cm.output = o->output;
-        o->cm.output_name = o->con_name;
-
         fprintf(stderr, "output=%p\n", (void*)o);
-        cm_init_output(color_manager, &o->cm);
-        fprintf(stderr, "%s cm_output=%p\n", o->con_name, (void*)o->cm.cm_output);
+        cm_init_output(color_manager, o);
+        fprintf(stderr, "%s cm_output=%p\n", o->con_name, (void*)o->cm_output);
         wl_display_roundtrip(display);
         wl_display_roundtrip(display);
 
