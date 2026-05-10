@@ -240,7 +240,7 @@ int main(void) {
             double input_pq = nits_to_pq(input_nits[j]);
             double output_pq = nits_to_pq(output_nits[j]);
             double multiplier = output_pq / input_pq;
-            printf("  %d nits -> %d nits:\t %.4f PQ -> %.4f PQ\tRamp Index: %u\tRamp Multiplier: %.4f\tRamp Value: %u\n",
+            printf("  %f nits -> %f nits:\t %.4f PQ -> %.4f PQ\tRamp Index: %u\tRamp Multiplier: %.4f\tRamp Value: %u\n",
                    input_nits[j], output_nits[j], input_pq, output_pq, (uint32_t)(input_pq * o->gamma_size), multiplier, (uint16_t)(output_pq * multiplier * UINT16_MAX));
         }
 
