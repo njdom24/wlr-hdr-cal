@@ -11,6 +11,9 @@ typedef struct {
     double *output_nits;
 } output_config;
 
+extern output_config *cfg;
+extern int config_sz;
+
 int config_read(output_config **out);
 void config_free(output_config *out);
 

@@ -171,9 +171,8 @@ int main(void) {
 
     wl_display_roundtrip(display); // Collect gamma_size events
 
-    // Read from config
-    output_config *cfg = NULL;
-    int config_sz = config_read(&cfg);
+    // Read from config file
+    config_sz = config_read(&cfg);
     if(config_sz < 0) {
         fprintf(stderr, "Failed to read from config file.\n");
         return 1;

@@ -5,6 +5,9 @@
 
 #include <string.h>
 
+output_config *cfg = NULL;
+int config_sz = -1;
+
 double toml_to_double(toml_datum_t d) {
     if (d.type == TOML_FP64)  return d.u.fp64;
     if (d.type == TOML_INT64) return (double)d.u.int64;
