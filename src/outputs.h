@@ -13,10 +13,6 @@ typedef struct {
     char *model;
 } head_state;
 
-static void manager_head(void *data, struct zwlr_output_manager_v1 *mgr, struct zwlr_output_head_v1 *head);
-static void manager_done(void *data, struct zwlr_output_manager_v1 *mgr, uint32_t serial);
-static void manager_finished(void *data, struct zwlr_output_manager_v1 *mgr);
-
 extern const struct zwlr_output_manager_v1_listener manager_listener;
 
 head_state* get_head_state(char *name);
