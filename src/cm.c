@@ -1,8 +1,117 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include "config.h"
 #include "cm.h"
+#include "outputs.h"
 #include "color-management-v1-client-protocol.h"
+#include "wlr-gamma-control-unstable-v1-client-protocol.h"
+
+// --- HDR10 PQ Mapping ---
+// Reference: https://www.itu.int/rec/R-REC-BT.2100/en
+#define PQ_MAX 10000.0
+#define M1 (2610.0 / 16384)
+#define M2 ((2523.0 / 4096) * 128)
+#define C2 ((2413.0 / 4096) * 32)
+#define C3 ((2392.0 / 4096) * 32)
+#define C1 (C3 - C2 + 1)
+
+// OETF (Inverse EOTF): nits -> PQ signal [0..1]
+static double nits_to_pq(double nits) {
+    double normalized = nits / PQ_MAX;
+    double powered = pow(normalized, M1);
+    return pow((C1 + C2 * powered) / (1.0 + C3 * powered), M2);
+}
+
+// Idea: Say gamma ramp size is 4096. From an input nits value, we want to figure out where it belongs in the gamma ramp. For example, 0.5 in PQ should be at index 2048 in the ramp.
+//   We can do this for each input nits value and output nits value, and then interpolate the gamma ramp values in between. This way we can create a custom PQ curve that maps input nits to output nits.
+/*
+    Protocol defines the gamma ramp as an FD of size (gamma_size * 3 channels)
+    in order of Red, Green, Blue
+*/
+void apply_gamma_ramp(output_info *o) {
+    size_t lut_len = -1;
+    double *input_nits = NULL;
+    double *output_nits = NULL;
+
+    //struct output_info *o = &outputs[i];
+    if(o->gamma_control == NULL) {
+        fprintf(stderr, "Cannot acquire gamma control for %s.\n", o->con_name);
+        return;
+    }
+
+    // Hash table might be better, but the list size should be small enough
+    for(int j = 0; j < config_sz; j++) {
+        if(strcmp(cfg[j].name, o->con_name) == 0) {
+            lut_len = cfg[j].lut_len;
+            input_nits = cfg[j].input_nits;
+            output_nits = cfg[j].output_nits;
+            break;
+        }
+    }
+
+    if(lut_len <= 0) {
+        fprintf(stderr, "Output %s not configured.\n", o->con_name);
+        return;
+    }
+
+    size_t size = sizeof(uint16_t) * o->gamma_size * 3;
+    int fd = memfd_create("gamma-ramp", 0);
+
+    printf("%s: gamma_size=%u, fd size=%zu\n", o->con_name, o->gamma_size, size);
+    if (ftruncate(fd, size) == -1) {
+        fprintf(stderr, "failed to create gamma ramp for %s\n", o->con_name);
+        return;
+    }
+    uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    for(int j = 0; j < lut_len; j++) {
+        double input_pq = nits_to_pq(input_nits[j]);
+        double output_pq = nits_to_pq(output_nits[j]);
+        double multiplier = output_pq / input_pq;
+        printf("  %f nits -> %f nits:\t %.4f PQ -> %.4f PQ\tRamp Index: %u\tRamp Multiplier: %.4f\tRamp Value: %u\n",
+                input_nits[j], output_nits[j], input_pq, output_pq, (uint32_t)(input_pq * o->gamma_size), multiplier, (uint16_t)(output_pq * multiplier * UINT16_MAX));
+    }
+
+    // Convert to PQ vals 0..1
+    double input_pq[lut_len]; // VLA size should be small...
+    double output_pq[lut_len];
+    for(int j = 0; j < lut_len; j++) {
+        input_pq[j] = nits_to_pq(input_nits[j]);
+        output_pq[j] = nits_to_pq(output_nits[j]);
+    }
+
+    // Interpolate between two points
+    for(int j = 0; j < lut_len - 1; j++) {
+        double i1 = input_pq[j];
+        double i2 = input_pq[j+1];
+        double o1 = output_pq[j];
+        double o2 = output_pq[j+1];
+
+        for(int ramp_idx = (int)(i1 * o->gamma_size); ramp_idx < (int)(i2 * o->gamma_size); ramp_idx++) {
+            double delta = (ramp_idx - (i1 * o->gamma_size));
+            double segment_length = ((i2 - i1) * o->gamma_size);
+            double t = delta / segment_length;
+            double out_pq = o1 + t * (o2 - o1);
+
+            uint16_t v = (uint16_t)(out_pq * UINT16_MAX);
+            ramp[ramp_idx]                      = v;
+            ramp[o->gamma_size + ramp_idx]      = v;
+            ramp[o->gamma_size * 2 + ramp_idx]  = v;
+        }
+    }
+    ramp[o->gamma_size - 1]         = UINT16_MAX;  // red
+    ramp[o->gamma_size * 2 - 1]     = UINT16_MAX;  // green
+    ramp[o->gamma_size * 3 - 1]     = UINT16_MAX;  // blue
+
+    munmap(ramp, size);
+
+    zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
+}
 
 // Image listeners
 // Used to determine active TF
@@ -140,4 +249,5 @@ void cm_init_output(struct wp_color_manager_v1 *color_manager, output_info *o) {
     wp_color_management_output_v1_add_listener(o->cm_output, &cm_output_listener, o);
     fetch_image_description(o);
     fprintf(stderr, "created listener for output %s\n", o->con_name);
+    apply_gamma_ramp(o);
 }
