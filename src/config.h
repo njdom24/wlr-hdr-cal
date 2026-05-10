@@ -12,6 +12,6 @@ typedef struct {
 } output_config;
 
 int config_read(output_config **out);
-int config_free(output_config *out);
+void config_free(output_config *out);
 
 #endif

@@ -92,7 +92,7 @@ int config_read(output_config **out) {
     return monitors.u.arr.size;
 }
 
-int config_free(output_config *out) {
+void config_free(output_config *out) {
     free(out->input_nits);
     free(out->output_nits);
     free(out);
