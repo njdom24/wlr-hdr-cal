@@ -18,8 +18,6 @@
 
 struct output_info {
     struct wl_output *output;
-    int32_t x, y, width, height;
-    int32_t refresh;
     char con_name[256];
     struct zwlr_gamma_control_v1 *gamma_control;
     uint32_t gamma_size;
@@ -79,28 +77,13 @@ static void output_name(void *data, struct wl_output *wl_output, const char *nam
     strncpy(info->con_name, name, 255);
 }
 
-static void output_description(void *data, struct wl_output *wl_output,
-    const char *description) {}
-
+static void output_description(void *data, struct wl_output *wl_output, const char *description) { }
 static void output_geometry(void *data, struct wl_output *wl_output,
     int32_t x, int32_t y, int32_t w, int32_t h,
-    int32_t subpixel, const char *make, const char *model, int32_t transform)
-{
-    struct output_info *info = data;
-    info->x = x; info->y = y;
-}
-
-static void output_mode(void *data, struct wl_output *wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
-    if (flags & WL_OUTPUT_MODE_CURRENT) {
-        struct output_info *info = data;
-        info->width = width;
-        info->height = height;
-        info->refresh = refresh;
-    }
-}
-
-static void output_done(void *data, struct wl_output *wl_output) {}
-static void output_scale(void *data, struct wl_output *wl_output, int32_t factor) {}
+    int32_t subpixel, const char *make, const char *model, int32_t transform) { }
+static void output_mode(void *data, struct wl_output *wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) { }
+static void output_done(void *data, struct wl_output *wl_output) { }
+static void output_scale(void *data, struct wl_output *wl_output, int32_t factor) { }
 
 static const struct wl_output_listener output_listener = {
     output_geometry, output_mode, output_done, output_scale, output_name, output_description
@@ -165,10 +148,8 @@ int main(void) {
     for (int i = 0; i < output_count; i++) {
         struct output_info *o = &outputs[i];
         head_state *hs = get_head_state(o->con_name);
-        printf("  Display %d (%s): %s %s @ %dx%d+%d+%d, %.2f Hz\n",
-               i, o->con_name, hs->make, hs->model,
-               o->width, o->height, o->x, o->y,
-               o->refresh / 1000.0);
+        printf("  Display %d (%s): %s %s\n",
+               i, o->con_name, hs->make, hs->model);
     }
     printf("------------------------------------------------------------------------------\n");
 
