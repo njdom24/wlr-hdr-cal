@@ -77,6 +77,11 @@ int config_read(output_config **out) {
                 if (pair.type == TOML_ARRAY && pair.u.arr.size == 2) {
                     double in  = toml_to_double(pair.u.arr.elem[0]);
                     double out = toml_to_double(pair.u.arr.elem[1]);
+                    if (j > 0 && in <= outputs[i].input_nits[j - 1]) {
+                        fprintf(stderr, "config_read: input nits must be strictly increasing. Found %g after %g\n", in, outputs[i].input_nits[j - 1]);
+                        toml_free(result);
+                        return -1;
+                    }
                     outputs[i].input_nits[j] = in;
                     outputs[i].output_nits[j] = out;
                     printf("    [%g, %g]", in, out);
