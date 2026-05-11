@@ -34,7 +34,7 @@ static double nits_to_pq(double nits) {
     in order of Red, Green, Blue
 */
 void apply_gamma_ramp(output_info *o) {
-    size_t lut_len = -1;
+    size_t lut_len = 0;
     double *input_nits = NULL;
     double *output_nits = NULL;
 

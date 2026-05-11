@@ -51,8 +51,14 @@ int config_read(output_config **out) {
 
         // name
         toml_datum_t name = toml_get(mon, "name");
-        if (name.type == TOML_STRING)
+        if (name.type == TOML_STRING) {
             printf("  name       = \"%s\"\n", name.u.s);
+            strncpy(outputs[i].name, name.u.s, sizeof(outputs[i].name) - 1);
+            outputs[i].name[sizeof(outputs[i].name) - 1] = '\0';
+        } else {
+            fprintf(stderr, "config_read: ""missing name for monitor %d\n", i);
+            continue;
+        }
 
         // multiplier (optional, default 1.0)
         toml_datum_t mult = toml_get(mon, "multiplier");
@@ -68,8 +74,6 @@ int config_read(output_config **out) {
             outputs[i].multiplier = 1.0;
             printf("  multiplier = 1.0 (default)\n");
         }
-
-        strcpy(outputs[i].name, name.u.s);
 
         // values = array of [lo, hi] pairs
         toml_datum_t values = toml_get(mon, "values");
