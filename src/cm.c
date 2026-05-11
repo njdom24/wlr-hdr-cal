@@ -97,6 +97,9 @@ void apply_gamma_ramp(output_info *o) {
             double t = delta / segment_length;
             double out_pq = o1 + t * (o2 - o1);
 
+            if (out_pq < 0.0) out_pq = 0.0;
+            if (out_pq > 1.0) out_pq = 1.0;
+
             uint16_t v = (uint16_t)(out_pq * UINT16_MAX);
             ramp[ramp_idx]                      = v;
             ramp[o->gamma_size + ramp_idx]      = v;

@@ -68,27 +68,60 @@ int config_read(output_config **out) {
         toml_datum_t values = toml_get(mon, "values");
         if (values.type == TOML_ARRAY) {
             printf("  values     = [\n");
-            size_t sz = values.u.arr.size * sizeof(double);
-            outputs[i].lut_len = values.u.arr.size;
+            int valid_count = 0;
+            int first_valid = -1;
+            int last_valid = -1;
+            for (int j = 0; j < values.u.arr.size; j++) {
+                toml_datum_t pair = values.u.arr.elem[j];
+                if (pair.type == TOML_ARRAY && pair.u.arr.size == 2) {
+                    if (first_valid == -1) first_valid = j;
+                    last_valid = j;
+                    valid_count++;
+                }
+            }
+            
+            int clamp_start = (first_valid == -1 || toml_to_double(values.u.arr.elem[first_valid].u.arr.elem[0]) > 0.0) ? 1 : 0;
+            int clamp_end = (last_valid == -1 || toml_to_double(values.u.arr.elem[last_valid].u.arr.elem[0]) < 10000.0) ? 1 : 0;
+
+            size_t total_size = valid_count + clamp_start + clamp_end;
+            size_t sz = total_size * sizeof(double);
             outputs[i].input_nits = (double*) malloc(sz);
             outputs[i].output_nits = (double*) malloc(sz);
+            
+            int curr = 0;
+            
+            if (clamp_start) {
+                outputs[i].input_nits[curr] = 0.0;
+                outputs[i].output_nits[curr] = 0.0;
+                printf("    [0, 0] (clamped),\n");
+                curr++;
+            }
+
             for (int j = 0; j < values.u.arr.size; j++) {
                 toml_datum_t pair = values.u.arr.elem[j];
                 if (pair.type == TOML_ARRAY && pair.u.arr.size == 2) {
                     double in  = toml_to_double(pair.u.arr.elem[0]);
                     double out = toml_to_double(pair.u.arr.elem[1]);
-                    if (j > 0 && in <= outputs[i].input_nits[j - 1]) {
-                        fprintf(stderr, "config_read: input nits must be strictly increasing. Found %g after %g\n", in, outputs[i].input_nits[j - 1]);
+                    if (curr > 0 && in <= outputs[i].input_nits[curr - 1]) {
+                        fprintf(stderr, "config_read: input nits must be strictly increasing. Found %g after %g\n", in, outputs[i].input_nits[curr - 1]);
                         toml_free(result);
                         return -1;
                     }
-                    outputs[i].input_nits[j] = in;
-                    outputs[i].output_nits[j] = out;
-                    printf("    [%g, %g]", in, out);
-                    if (j + 1 < values.u.arr.size) printf(",");
-                    printf("\n");
+                    outputs[i].input_nits[curr] = in;
+                    outputs[i].output_nits[curr] = out;
+                    printf("    [%g, %g],\n", in, out);
+                    curr++;
                 }
             }
+            
+            if (clamp_end) {
+                outputs[i].input_nits[curr] = 10000.0;
+                outputs[i].output_nits[curr] = 10000.0;
+                printf("    [10000, 10000] (clamped)\n");
+                curr++;
+            }
+
+            outputs[i].lut_len = curr;
             printf("  ]\n");
         }
 
