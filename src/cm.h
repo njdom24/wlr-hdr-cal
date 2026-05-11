@@ -6,5 +6,7 @@
 
 extern const struct wp_color_manager_v1_listener color_manager_listener;
 void cm_init_output(struct wp_color_manager_v1 *color_manager, output_info *o);
+void apply_gamma_ramp(output_info *o);
+void unset_gamma_ramp(output_info *o);
 
 #endif

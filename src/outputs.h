@@ -18,6 +18,7 @@ typedef struct {
 
     int is_hdr;
     int tf_named; // Supercedes luminance heuristic
+    int cm_info_done;
 } output_info;
 
 typedef struct {
@@ -27,9 +28,12 @@ typedef struct {
     char *name;
     char *make;
     char *model;
+    int done;
 } head_state;
 
 extern const struct zwlr_output_manager_v1_listener manager_listener;
+extern output_info outputs[16];
+extern int output_count;
 
 head_state* get_head_state(char *name);
 

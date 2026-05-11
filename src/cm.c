@@ -177,11 +177,17 @@ static void info_tf_power(void *data, struct wp_image_description_info_v1 *info,
 static void info_done(void *data, struct wp_image_description_info_v1 *info) {
     output_info *o = data;
     fprintf(stderr, "info done, %s is_hdr=%d\n", o->con_name, o->is_hdr);
+    o->cm_info_done = 1;
 
+    head_state *hs = get_head_state(o->con_name);
+    if (hs && hs->done) {
     if(o->is_hdr) {
         apply_gamma_ramp(o);
     } else {
         unset_gamma_ramp(o);
+        }
+    } else {
+        fprintf(stderr, "Waiting for wlr_output info to apply gamma for %s\n", o->con_name);
     }
 }
 

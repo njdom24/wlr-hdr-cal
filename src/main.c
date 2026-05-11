@@ -8,8 +8,6 @@
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 #include "color-management-v1-client-protocol.h"
 
-static output_info outputs[16];
-static int output_count = 0;
 static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 static struct wp_color_manager_v1 *color_manager = NULL;

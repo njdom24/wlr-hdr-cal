@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "outputs.h"
+#include "cm.h"
 #include "wlr-output-management-unstable-v1-client-protocol.h"
+
+output_info outputs[16];
+int output_count = 0;
 
 // --- Head listeners ---
 
@@ -11,8 +15,6 @@ static int head_count = 0;
 
 static void head_name(void *data, struct zwlr_output_head_v1 *head, const char *name) {
     head_state *hs = data;
-
-    printf("[+] Output connected: %s\n", name);
     hs->name = strdup(name);
 }
 
@@ -22,7 +24,6 @@ static void head_mode(void *data, struct zwlr_output_head_v1 *head, struct zwlr_
 static void head_enabled(void *data, struct zwlr_output_head_v1 *head, int32_t enabled) {
     head_state *hs = data;
     hs->enabled = enabled;
-    printf("Enabled: %d\n", enabled);
 }
 static void head_current_mode(void *data, struct zwlr_output_head_v1 *head, struct zwlr_output_mode_v1 *mode) {}
 static void head_position(void *data, struct zwlr_output_head_v1 *head, int32_t x, int32_t y) {}
@@ -93,8 +94,30 @@ static void manager_head(void *data, struct zwlr_output_manager_v1 *mgr, struct 
     zwlr_output_head_v1_add_listener(head, &head_listener, hs);
 }
 
+output_info* get_output_info(char *name) {
+    for (int i = 0; i < output_count; i++) {
+        if (outputs[i].active && strcmp(outputs[i].con_name, name) == 0) {
+            return &outputs[i];
+        }
+    }
+    return NULL;
+}
+
 static void manager_done(void *data, struct zwlr_output_manager_v1 *mgr, uint32_t serial) {
-    // All head events have been delivered
+    for (int i = 0; i < head_count; i++) {
+        if (heads[i] && heads[i]->name && !heads[i]->done) {
+            heads[i]->done = 1;
+            
+            output_info *o = get_output_info(heads[i]->name);
+            if (o && o->cm_info_done) {
+                if (o->is_hdr) {
+                    apply_gamma_ramp(o);
+                } else {
+                    unset_gamma_ramp(o);
+                }
+            }
+        }
+    }
 }
 
 static void manager_finished(void *data, struct zwlr_output_manager_v1 *mgr) {
