@@ -56,13 +56,20 @@ int config_read(output_config **out) {
 
         // multiplier (optional, default 1.0)
         toml_datum_t mult = toml_get(mon, "multiplier");
-        if (mult.type == TOML_FP64)
-            printf("  multiplier = %g\n", mult.u.fp64);
-        else
+        if (mult.type == TOML_FP64 || mult.type == TOML_INT64) {
+            outputs[i].multiplier = toml_to_double(mult);
+            if (outputs[i].multiplier <= 0.0) {
+                fprintf(stderr, "config_read: multiplier must be > 0. Found %g\n", outputs[i].multiplier);
+                toml_free(result);
+                return -1;
+            }
+            printf("  multiplier = %g\n", outputs[i].multiplier);
+        } else {
+            outputs[i].multiplier = 1.0;
             printf("  multiplier = 1.0 (default)\n");
+        }
 
         strcpy(outputs[i].name, name.u.s);
-        outputs[i].multiplier = mult.u.fp64;
 
         // values = array of [lo, hi] pairs
         toml_datum_t values = toml_get(mon, "values");
@@ -101,7 +108,8 @@ int config_read(output_config **out) {
                 toml_datum_t pair = values.u.arr.elem[j];
                 if (pair.type == TOML_ARRAY && pair.u.arr.size == 2) {
                     double in  = toml_to_double(pair.u.arr.elem[0]);
-                    double out = toml_to_double(pair.u.arr.elem[1]);
+                    double out = toml_to_double(pair.u.arr.elem[1]) * outputs[i].multiplier;
+                    if (out > 10000.0) out = 10000.0;
                     if (curr > 0 && in <= outputs[i].input_nits[curr - 1]) {
                         fprintf(stderr, "config_read: input nits must be strictly increasing. Found %g after %g\n", in, outputs[i].input_nits[curr - 1]);
                         toml_free(result);
@@ -116,13 +124,30 @@ int config_read(output_config **out) {
             
             if (clamp_end) {
                 outputs[i].input_nits[curr] = 10000.0;
-                outputs[i].output_nits[curr] = 10000.0;
-                printf("    [10000, 10000] (clamped)\n");
+                double out = 10000.0 * outputs[i].multiplier;
+                if (out > 10000.0) out = 10000.0;
+                outputs[i].output_nits[curr] = out;
+                printf("    [10000, %g] (clamped)\n", out);
                 curr++;
             }
 
             outputs[i].lut_len = curr;
             printf("  ]\n");
+        } else if (mult.type == TOML_FP64 || mult.type == TOML_INT64) {
+            printf("  values     = (generated from multiplier %g)\n", outputs[i].multiplier);
+            int steps = 100;
+            size_t sz = (steps + 1) * sizeof(double);
+            outputs[i].input_nits = (double*) malloc(sz);
+            outputs[i].output_nits = (double*) malloc(sz);
+            
+            for (int j = 0; j <= steps; j++) {
+                double in = (10000.0 / steps) * j;
+                double out = in * outputs[i].multiplier;
+                if (out > 10000.0) out = 10000.0;
+                outputs[i].input_nits[j] = in;
+                outputs[i].output_nits[j] = out;
+            }
+            outputs[i].lut_len = steps + 1;
         }
 
         printf("\n");

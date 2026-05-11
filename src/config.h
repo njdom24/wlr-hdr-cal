@@ -5,7 +5,7 @@
 
 typedef struct {
     char name[64];
-    double multiplier; // TODO: Use on top of / instead of LUT
+    double multiplier;
     size_t lut_len;
     double *input_nits;
     double *output_nits;
