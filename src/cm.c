@@ -45,7 +45,28 @@ void apply_gamma_ramp(output_info *o) {
 
     // Hash table might be better, but the list size should be small enough
     for(int j = 0; j < config_sz; j++) {
-        if(strcmp(cfg[j].name, o->con_name) == 0) {
+        int match = 0;
+
+        if(cfg[j].name[0] != '\0') {
+            // Match against connector name
+            if(strcmp(cfg[j].name, o->con_name) == 0) {
+                match = 1;
+            }
+            // Try to match against Make + Model
+            else {
+                head_state *hs = get_head_state(o->con_name);
+                if (hs && hs->make && hs->model) {
+                    size_t len = strlen(hs->make) + strlen(hs->model) + 2;
+                    char make_model[len];
+                    snprintf(make_model, len, "%s %s", hs->make, hs->model);
+                    if (strcmp(cfg[j].name, make_model) == 0) {
+                        match = 1;
+                    }
+                }
+            }
+        }
+
+        if (match) {
             lut_len = cfg[j].lut_len;
             input_nits = cfg[j].input_nits;
             output_nits = cfg[j].output_nits;
