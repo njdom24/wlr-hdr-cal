@@ -28,6 +28,14 @@ static double nits_to_pq(double nits) {
     return pow((C1 + C2 * powered) / (1.0 + C3 * powered), M2);
 }
 
+// EOTF: PQ signal [0..1] -> nits
+static double pq_to_nits(double pq) {
+    double powered = pow(pq, 1.0 / M2);
+    double num = fmax(powered - C1, 0.0);
+    double den = C2 - C3 * powered;
+    return PQ_MAX * pow(num / den, 1.0 / M1);
+}
+
 // Idea: Say gamma ramp size is 4096. From an input nits value, we want to figure out where it belongs in the gamma ramp. For example, 0.5 in PQ should be at index 2048 in the ramp.
 //   We can do this for each input nits value and output nits value, and then interpolate the gamma ramp values in between. This way we can create a custom PQ curve that maps input nits to output nits.
 /*
@@ -132,14 +140,22 @@ void apply_gamma_ramp(output_info *o) {
     ramp[o->gamma_size * 2 - 1]     = UINT16_MAX;  // green
     ramp[o->gamma_size * 3 - 1]     = UINT16_MAX;  // blue
 
+    // Apply blue light filter if specified
     if (bluelight_temperature != 6500) {
         bluelight_rgb gamma_rgb = bluelight_temp_to_rgb(bluelight_temperature);
-        for(int i = 0; i < o->gamma_size; i++) {
-            uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
+        // De-gamma the multipliers to linear
+        double r_linear = pow(gamma_rgb.r, 2.2);
+        double g_linear = pow(gamma_rgb.g, 2.2);
+        double b_linear = pow(gamma_rgb.b, 2.2);
 
-            ramp[i]                     = (uint16_t)(v * gamma_rgb.r);
-            ramp[o->gamma_size + i]     = (uint16_t)(v * gamma_rgb.g);
-            ramp[o->gamma_size * 2 + i] = (uint16_t)(v * gamma_rgb.b);
+        for (int i = 0; i < o->gamma_size; i++) {
+            uint32_t r_idx = i;
+            uint32_t g_idx = o->gamma_size + i;
+            uint32_t b_idx = 2 * o->gamma_size + i;
+
+            ramp[r_idx] = (uint16_t)(nits_to_pq(pq_to_nits((double)ramp[r_idx] / UINT16_MAX) * r_linear) * UINT16_MAX);
+            ramp[g_idx] = (uint16_t)(nits_to_pq(pq_to_nits((double)ramp[g_idx] / UINT16_MAX) * g_linear) * UINT16_MAX);
+            ramp[b_idx] = (uint16_t)(nits_to_pq(pq_to_nits((double)ramp[b_idx] / UINT16_MAX) * b_linear) * UINT16_MAX);
         }
     }
 
