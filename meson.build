@@ -5,6 +5,7 @@ src = files(
   'src/config.c',
   'src/outputs.c',
   'src/cm.c',
+  'src/bluelight.c',
 )
 
 wl_dep = dependency('wayland-client')

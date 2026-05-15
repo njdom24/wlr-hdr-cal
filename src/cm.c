@@ -10,6 +10,7 @@
 #include "outputs.h"
 #include "color-management-v1-client-protocol.h"
 #include "wlr-gamma-control-unstable-v1-client-protocol.h"
+#include "bluelight.h"
 
 // --- HDR10 PQ Mapping ---
 // Reference: https://www.itu.int/rec/R-REC-BT.2100/en
@@ -131,12 +132,22 @@ void apply_gamma_ramp(output_info *o) {
     ramp[o->gamma_size * 2 - 1]     = UINT16_MAX;  // green
     ramp[o->gamma_size * 3 - 1]     = UINT16_MAX;  // blue
 
-    munmap(ramp, size);
+    if (bluelight_temperature != 6500) {
+        bluelight_rgb gamma_rgb = bluelight_temp_to_rgb(bluelight_temperature);
+        for(int i = 0; i < o->gamma_size; i++) {
+            uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
 
+            ramp[i]                     = (uint16_t)(v * gamma_rgb.r);
+            ramp[o->gamma_size + i]     = (uint16_t)(v * gamma_rgb.g);
+            ramp[o->gamma_size * 2 + i] = (uint16_t)(v * gamma_rgb.b);
+        }
+    }
+
+    munmap(ramp, size);
     zwlr_gamma_control_v1_set_gamma(o->gamma_control, fd);
 }
 
-void unset_gamma_ramp(output_info *o) {
+void apply_blue_light_filter_sdr(output_info *o) {
     if(o->gamma_control == NULL) {
         fprintf(stderr, "failed to acquire gamma control for %s.\n", o->con_name);
         return;
@@ -150,11 +161,24 @@ void unset_gamma_ramp(output_info *o) {
     }
     uint16_t *ramp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    for(int i = 0; i < o->gamma_size; i++) {
-        uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
-        ramp[i]                     = v;  // red
-        ramp[o->gamma_size + i]     = v;  // green
-        ramp[o->gamma_size * 2 + i] = v;  // blue
+    if (bluelight_temperature != 6500) {
+        bluelight_rgb gamma_rgb = bluelight_temp_to_rgb(bluelight_temperature);
+        for(int i = 0; i < o->gamma_size; i++) {
+            uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
+
+            ramp[i]                     = (uint16_t)(v * gamma_rgb.r);
+            ramp[o->gamma_size + i]     = (uint16_t)(v * gamma_rgb.g);
+            ramp[o->gamma_size * 2 + i] = (uint16_t)(v * gamma_rgb.b);
+        }
+    }
+    else {
+        // Reset gamma table
+        for(int i = 0; i < o->gamma_size; i++) {
+            uint16_t v = (uint16_t)((double)i / (o->gamma_size - 1) * UINT16_MAX);
+            ramp[i]                     = v;  // red
+            ramp[o->gamma_size + i]     = v;  // green
+            ramp[o->gamma_size * 2 + i] = v;  // blue
+        }
     }
 
     munmap(ramp, size);
@@ -181,7 +205,7 @@ static void info_done(void *data, struct wp_image_description_info_v1 *info) {
     if(o->is_hdr) {
         apply_gamma_ramp(o);
     } else {
-        unset_gamma_ramp(o);
+        apply_blue_light_filter_sdr(o);
     }
 }
 
