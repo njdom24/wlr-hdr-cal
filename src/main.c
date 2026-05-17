@@ -1,12 +1,17 @@
 #include <wayland-client.h>
-#include "wlr-gamma-control-unstable-v1-client-protocol.h"
+#include <dbus/dbus.h>
+#include <errno.h>
+#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include "config.h"
-#include "outputs.h"
 #include "cm.h"
-#include "wlr-output-management-unstable-v1-client-protocol.h"
+#include "dbus.h"
+#include "outputs.h"
+
 #include "color-management-v1-client-protocol.h"
+#include "wlr-gamma-control-unstable-v1-client-protocol.h"
+#include "wlr-output-management-unstable-v1-client-protocol.h"
 
 static output_info outputs[16];
 static int output_count = 0;
@@ -192,8 +197,57 @@ int main(void) {
         return 1;
     }
 
-    while (wl_display_dispatch(display) != -1) {
-        // keeps processing events until the connection drops or Ctrl+C
+    DBusConnection *conn = setup_dbus();
+
+    int running = 1;
+
+    // Poll both Wayland and D-Bus events
+    while (running) {
+        if (wl_display_dispatch_pending(display) == -1) break;
+
+        while (wl_display_prepare_read(display) != 0)
+            wl_display_dispatch_pending(display);
+
+        while (wl_display_flush(display) == -1) {
+            if (errno != EAGAIN) {
+                wl_display_cancel_read(display);
+                running = 0;
+                break;
+            }
+            struct pollfd flush_fd = { wl_display_get_fd(display), POLLOUT, 0 };
+            poll(&flush_fd, 1, -1);
+        }
+
+        if (!running) break;
+
+        // Drain buffered D-Bus messages
+        while (dbus_connection_get_dispatch_status(conn) == DBUS_DISPATCH_DATA_REMAINS)
+            dbus_connection_dispatch(conn);
+
+        // Only sleep if D-Bus has nothing buffered
+        if (dbus_connection_get_dispatch_status(conn) != DBUS_DISPATCH_DATA_REMAINS) {
+            int wayland_fd = wl_display_get_fd(display);
+            int dbus_fd = -1;
+            dbus_connection_get_unix_fd(conn, &dbus_fd);
+
+            struct pollfd fds[2] = {
+                { .fd = wayland_fd, .events = POLLIN },
+                { .fd = dbus_fd,    .events = POLLIN },
+            };
+
+            poll(fds, 2, -1);
+
+            if (fds[0].revents & POLLIN) {
+                wl_display_read_events(display);
+            } else {
+                wl_display_cancel_read(display);
+            }
+
+            if (fds[1].revents & POLLIN)
+                dbus_connection_read_write_dispatch(conn, 0);
+        } else {
+            wl_display_cancel_read(display);
+        }
     }
 
     config_free(cfg);

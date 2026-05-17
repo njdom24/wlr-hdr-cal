@@ -11,5 +11,6 @@ pkgs.mkShell {
     meson
     ninja
     tomlc17
+    dbus
   ];
 }

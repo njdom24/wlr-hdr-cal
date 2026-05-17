@@ -6,6 +6,7 @@ src = files(
   'src/outputs.c',
   'src/cm.c',
   'src/bluelight.c',
+  'src/dbus.c',
 )
 
 wl_dep = dependency('wayland-client')
@@ -40,6 +41,8 @@ wp_dir = wp_dep.get_variable('pkgdatadir')
 color_management_xml = files(wp_dir / 'staging/color-management/color-management-v1.xml')
 color_management = wl_mod.scan_xml(color_management_xml)
 
+dbus_dep = dependency('dbus-1')
+
 executable('main', src, gamma, output_management, color_management,
-  dependencies: [wl_dep, toml_dep, meson.get_compiler('c').find_library('m')],
+  dependencies: [wl_dep, toml_dep, dbus_dep, meson.get_compiler('c').find_library('m')],
   c_args: ['-O2'])
