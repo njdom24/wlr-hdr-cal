@@ -205,6 +205,10 @@ int main(void) {
     while (running) {
         if (wl_display_dispatch_pending(display) == -1) break;
 
+        // Drain buffered D-Bus messages
+        while (dbus_connection_get_dispatch_status(conn) == DBUS_DISPATCH_DATA_REMAINS)
+            dbus_connection_dispatch(conn);
+
         while (wl_display_prepare_read(display) != 0)
             wl_display_dispatch_pending(display);
 
@@ -220,37 +224,44 @@ int main(void) {
 
         if (!running) break;
 
-        // Drain buffered D-Bus messages
-        while (dbus_connection_get_dispatch_status(conn) == DBUS_DISPATCH_DATA_REMAINS)
-            dbus_connection_dispatch(conn);
+        int wayland_fd = wl_display_get_fd(display);
+        int dbus_fd = -1;
+        dbus_connection_get_unix_fd(conn, &dbus_fd);
 
-        // Only sleep if D-Bus has nothing buffered
-        if (dbus_connection_get_dispatch_status(conn) != DBUS_DISPATCH_DATA_REMAINS) {
-            int wayland_fd = wl_display_get_fd(display);
-            int dbus_fd = -1;
-            dbus_connection_get_unix_fd(conn, &dbus_fd);
+        struct pollfd fds[2] = {
+            { .fd = wayland_fd, .events = POLLIN },
+            { .fd = dbus_fd,    .events = POLLIN },
+        };
 
-            struct pollfd fds[2] = {
-                { .fd = wayland_fd, .events = POLLIN },
-                { .fd = dbus_fd,    .events = POLLIN },
-            };
+        poll(fds, 2, -1);
 
-            poll(fds, 2, -1);
-
-            if (fds[0].revents & POLLIN) {
-                wl_display_read_events(display);
-            } else {
-                wl_display_cancel_read(display);
-            }
-
-            if (fds[1].revents & POLLIN)
-                dbus_connection_read_write_dispatch(conn, 0);
+        if (fds[0].revents & POLLIN) {
+            wl_display_read_events(display);
         } else {
             wl_display_cancel_read(display);
         }
+
+        if (fds[1].revents & POLLIN)
+            dbus_connection_read_write_dispatch(conn, 0);
     }
 
     config_free(cfg);
     wl_display_disconnect(display);
     return 0;
+}
+
+void refresh_all_outputs(void) {
+    for (int i = 0; i < output_count; i++) {
+        output_info *o = &outputs[i];
+        if (!o->active) continue;
+        
+        // Wait until image_desc is loaded to determine SDR/HDR
+        if (!o->image_desc) continue;
+        
+        if (o->is_hdr) {
+            apply_gamma_ramp(o);
+        } else {
+            apply_blue_light_filter_sdr(o);
+        }
+    }
 }

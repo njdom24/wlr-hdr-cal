@@ -6,20 +6,19 @@
 #include "bluelight.h"
 #include "cm.h"
 
-static int temperature = 0;
 
 DBusHandlerResult handle_message(DBusConnection *conn, DBusMessage *msg, void *user_data) {
     if (dbus_message_is_method_call(msg, "org.WlrHdrCal", "GetTemperature")) {
         DBusMessage *reply = dbus_message_new_method_return(msg);
 
-        dbus_message_append_args(reply, DBUS_TYPE_INT32, &temperature, DBUS_TYPE_INVALID);
+        dbus_message_append_args(reply, DBUS_TYPE_UINT32, &bluelight_temperature, DBUS_TYPE_INVALID);
 
         dbus_connection_send(conn, reply, NULL);
         dbus_connection_flush(conn);
 
         dbus_message_unref(reply);
 
-        printf("GetTemperature -> %d\n", temperature);
+        printf("GetTemperature -> %u\n", bluelight_temperature);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
 
@@ -27,16 +26,17 @@ DBusHandlerResult handle_message(DBusConnection *conn, DBusMessage *msg, void *u
         DBusError err;
         dbus_error_init(&err);
 
-        int32_t new_temperature = 0;
+        uint32_t new_temperature = 0;
 
-        if (!dbus_message_get_args(msg, &err, DBUS_TYPE_INT32, &new_temperature, DBUS_TYPE_INVALID)) {
+        if (!dbus_message_get_args(msg, &err, DBUS_TYPE_UINT32, &new_temperature, DBUS_TYPE_INVALID)) {
             fprintf(stderr, "Failed to parse args: %s\n", err.message);
             dbus_error_free(&err);
 
             return DBUS_HANDLER_RESULT_HANDLED;
         }
 
-        temperature = new_temperature;
+        bluelight_temperature = new_temperature;
+        refresh_all_outputs();
 
         DBusMessage *reply = dbus_message_new_method_return(msg);
 
@@ -45,7 +45,7 @@ DBusHandlerResult handle_message(DBusConnection *conn, DBusMessage *msg, void *u
 
         dbus_message_unref(reply);
 
-        printf("SetTemperature <- %d\n", temperature);
+        printf("SetTemperature <- %u\n", bluelight_temperature);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
 
