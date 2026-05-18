@@ -17,7 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define M_PI 3.14159265358979323846
 #endif
 
-uint32_t bluelight_temperature = 3500;
+uint32_t bluelight_temperature = 6500;
 
 // Illuminant D, or daylight locus.
 static int illuminant_d(int temp, double *x, double *y) {
