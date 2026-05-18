@@ -5,7 +5,7 @@
 #include "dbus.h"
 #include "bluelight.h"
 #include "cm.h"
-
+#include "outputs.h"
 
 DBusHandlerResult handle_message(DBusConnection *conn, DBusMessage *msg, void *user_data) {
     if (dbus_message_is_method_call(msg, "org.WlrHdrCal", "GetTemperature")) {

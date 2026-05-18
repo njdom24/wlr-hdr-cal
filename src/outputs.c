@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "outputs.h"
+#include "cm.h"
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 
-// --- Head listeners ---
+int output_count = 0;
+output_info outputs[16];
 
 static head_state* heads[16];
 static int head_count = 0;
@@ -119,4 +121,18 @@ head_state* get_head_state(char *name) {
     }
 
     return NULL;
+}
+
+void refresh_all_outputs(void) {
+    for (int i = 0; i < output_count; i++) {
+        output_info *o = &outputs[i];
+        if (!o->active) continue;
+        if (!o->image_desc) continue;
+        
+        if (o->is_hdr) {
+            apply_gamma_ramp(o);
+        } else {
+            apply_blue_light_filter_sdr(o);
+        }
+    }
 }

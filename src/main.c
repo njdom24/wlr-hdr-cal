@@ -13,8 +13,6 @@
 #include "wlr-gamma-control-unstable-v1-client-protocol.h"
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 
-static output_info outputs[16];
-static int output_count = 0;
 static struct zwlr_output_manager_v1 *output_manager = NULL;
 static struct zwlr_gamma_control_manager_v1 *gamma_manager = NULL;
 static struct wp_color_manager_v1 *color_manager = NULL;
@@ -248,20 +246,4 @@ int main(void) {
     config_free(cfg);
     wl_display_disconnect(display);
     return 0;
-}
-
-void refresh_all_outputs(void) {
-    for (int i = 0; i < output_count; i++) {
-        output_info *o = &outputs[i];
-        if (!o->active) continue;
-        
-        // Wait until image_desc is loaded to determine SDR/HDR
-        if (!o->image_desc) continue;
-        
-        if (o->is_hdr) {
-            apply_gamma_ramp(o);
-        } else {
-            apply_blue_light_filter_sdr(o);
-        }
-    }
 }

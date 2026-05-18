@@ -30,6 +30,8 @@ typedef struct {
 } head_state;
 
 extern const struct zwlr_output_manager_v1_listener manager_listener;
+extern output_info outputs[];
+extern int output_count;
 
 head_state* get_head_state(char *name);
 void refresh_all_outputs(void);
