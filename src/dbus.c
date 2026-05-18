@@ -74,7 +74,7 @@ DBusConnection *setup_dbus() {
         .message_function = handle_message,
     };
 
-    if (!dbus_connection_register_object_path(conn, "/org/WlrHdrCal", &vtable, NULL)) {
+    if (!dbus_connection_register_object_path(conn, "/", &vtable, NULL)) {
         fprintf(stderr, "Failed to register object path\n");
         return NULL;
     }
